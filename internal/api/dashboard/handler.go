@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/contember/edvabe/internal/runtime"
@@ -122,6 +123,12 @@ type overviewSummary struct {
 
 func serveOverview(opts HandlerOptions, w http.ResponseWriter, r *http.Request) {
 	list := opts.Manager.List()
+	sort.Slice(list, func(i, j int) bool {
+		if list[i].CreatedAt.Equal(list[j].CreatedAt) {
+			return list[i].ID < list[j].ID
+		}
+		return list[i].CreatedAt.Before(list[j].CreatedAt)
+	})
 
 	resp := overviewResponse{
 		Sandboxes: make([]overviewSandbox, 0, len(list)),
@@ -177,6 +184,12 @@ func serveOverview(opts HandlerOptions, w http.ResponseWriter, r *http.Request) 
 
 	if opts.Templates != nil {
 		tpls := opts.Templates.List()
+		sort.Slice(tpls, func(i, j int) bool {
+			if tpls[i].CreatedAt.Equal(tpls[j].CreatedAt) {
+				return tpls[i].ID < tpls[j].ID
+			}
+			return tpls[i].CreatedAt.Before(tpls[j].CreatedAt)
+		})
 		resp.Templates = make([]overviewTemplate, 0, len(tpls))
 		for _, t := range tpls {
 			ot := overviewTemplate{
