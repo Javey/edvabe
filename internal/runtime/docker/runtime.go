@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/moby/moby/client"
@@ -38,6 +39,12 @@ type Runtime struct {
 	cli     *client.Client
 	host    string
 	network string // Docker network sandboxes are attached to; empty = default bridge
+
+	// securityOpt is applied verbatim as HostConfig.SecurityOpt on every spawned
+	// sandbox (from EDVABE_SECURITY_OPT). Empty = Docker defaults. Use e.g.
+	// "seccomp=unconfined" to let in-sandbox tooling create user namespaces
+	// (bubblewrap). Opt-in: it relaxes the sandbox's isolation.
+	securityOpt []string
 
 	mu        sync.RWMutex
 	endpoints map[string]endpoint
@@ -79,16 +86,30 @@ func New() (*Runtime, error) {
 		network = detectOwnNetwork(cli)
 	}
 	return &Runtime{
-		cli:       cli,
-		host:      host,
-		network:   network,
-		endpoints: make(map[string]endpoint),
+		cli:         cli,
+		host:        host,
+		network:     network,
+		securityOpt: parseSecurityOpt(os.Getenv("EDVABE_SECURITY_OPT")),
+		endpoints:   make(map[string]endpoint),
 	}, nil
 }
 
 // Network reports the Docker network name sandbox containers are
 // attached to ("" means default bridge).
 func (r *Runtime) Network() string { return r.network }
+
+// parseSecurityOpt splits a comma-separated EDVABE_SECURITY_OPT value into the
+// list passed to HostConfig.SecurityOpt (e.g. "seccomp=unconfined,apparmor=unconfined").
+// Blank entries are dropped; an empty/unset value yields nil (Docker defaults).
+func parseSecurityOpt(raw string) []string {
+	var opts []string
+	for _, part := range strings.Split(raw, ",") {
+		if p := strings.TrimSpace(part); p != "" {
+			opts = append(opts, p)
+		}
+	}
+	return opts
+}
 
 // OwnIPv4 returns edvabe's own IPv4 address on the sandbox network, or
 // "" when it can't be determined (not containerized, inspection failed,

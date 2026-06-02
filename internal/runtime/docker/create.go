@@ -61,10 +61,13 @@ func (r *Runtime) Create(ctx context.Context, req runtime.CreateRequest) (*runti
 	// podman, flatpak-builder, …) work inside the sandbox container.
 	// Safe under edvabe's single-user local-dev threat model; apparmor=
 	// unconfined is silently ignored on hosts without AppArmor (macOS
-	// Docker Desktop, Arch, Fedora).
+	// Docker Desktop, Arch, Fedora). EDVABE_SECURITY_OPT overrides this default.
 	hostCfg := &container.HostConfig{
 		Mounts:      mounts,
 		SecurityOpt: []string{"seccomp=unconfined", "apparmor=unconfined"},
+	}
+	if len(r.securityOpt) > 0 {
+		hostCfg.SecurityOpt = r.securityOpt
 	}
 	if r.network != "" {
 		hostCfg.NetworkMode = container.NetworkMode(r.network)
