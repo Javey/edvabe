@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/moby/moby/api/types/mount"
 	"github.com/moby/moby/client"
 
 	"github.com/contember/edvabe/internal/runtime"
@@ -45,6 +46,12 @@ type Runtime struct {
 	// "seccomp=unconfined" to let in-sandbox tooling create user namespaces
 	// (bubblewrap). Opt-in: it relaxes the sandbox's isolation.
 	securityOpt []string
+
+	// extraBinds are bind mounts (from EDVABE_EXTRA_BINDS) added to every spawned
+	// sandbox in addition to the per-request ones. Format per entry:
+	// "hostPath:containerPath[:ro]". Useful to share host fixtures (e.g. LLM
+	// snapshots) with sandboxes for deterministic local testing. Opt-in.
+	extraBinds []mount.Mount
 
 	mu        sync.RWMutex
 	endpoints map[string]endpoint
@@ -90,6 +97,7 @@ func New() (*Runtime, error) {
 		host:        host,
 		network:     network,
 		securityOpt: parseSecurityOpt(os.Getenv("EDVABE_SECURITY_OPT")),
+		extraBinds:  parseExtraBinds(os.Getenv("EDVABE_EXTRA_BINDS")),
 		endpoints:   make(map[string]endpoint),
 	}, nil
 }
@@ -109,6 +117,29 @@ func parseSecurityOpt(raw string) []string {
 		}
 	}
 	return opts
+}
+
+// parseExtraBinds parses EDVABE_EXTRA_BINDS ("host:ctr[:ro],host2:ctr2") into
+// bind mounts applied to every sandbox. Malformed entries are skipped.
+func parseExtraBinds(raw string) []mount.Mount {
+	var binds []mount.Mount
+	for _, part := range strings.Split(raw, ",") {
+		p := strings.TrimSpace(part)
+		if p == "" {
+			continue
+		}
+		segs := strings.Split(p, ":")
+		if len(segs) < 2 || segs[0] == "" || segs[1] == "" {
+			continue
+		}
+		binds = append(binds, mount.Mount{
+			Type:     mount.TypeBind,
+			Source:   segs[0],
+			Target:   segs[1],
+			ReadOnly: len(segs) >= 3 && segs[2] == "ro",
+		})
+	}
+	return binds
 }
 
 // OwnIPv4 returns edvabe's own IPv4 address on the sandbox network, or

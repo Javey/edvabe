@@ -50,6 +50,7 @@ func (r *Runtime) Create(ctx context.Context, req runtime.CreateRequest) (*runti
 			Target: ctrPath,
 		})
 	}
+	mounts = append(mounts, r.extraBinds...)
 
 	cfg := &container.Config{
 		Image:  req.Image,
