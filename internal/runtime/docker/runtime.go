@@ -47,6 +47,14 @@ type Runtime struct {
 	// (bubblewrap). Opt-in: it relaxes the sandbox's isolation.
 	securityOpt []string
 
+	// systempathsUnconfined clears MaskedPaths/ReadonlyPaths on every spawned
+	// sandbox (set when EDVABE_SECURITY_OPT contains "systempaths=unconfined").
+	// Docker masks /proc/* by default; clearing it lets in-sandbox bubblewrap
+	// mount a fresh /proc. Translated rather than passed through because the
+	// daemon rejects systempaths as an API-level SecurityOpt. Opt-in: relaxes
+	// the sandbox's isolation.
+	systempathsUnconfined bool
+
 	// extraBinds are bind mounts (from EDVABE_EXTRA_BINDS) added to every spawned
 	// sandbox in addition to the per-request ones. Format per entry:
 	// "hostPath:containerPath[:ro]". Useful to share host fixtures (e.g. LLM
@@ -92,13 +100,15 @@ func New() (*Runtime, error) {
 	if network == "" {
 		network = detectOwnNetwork(cli)
 	}
+	securityOpt, systempathsUnconfined := parseSecurityOpt(os.Getenv("EDVABE_SECURITY_OPT"))
 	return &Runtime{
-		cli:         cli,
-		host:        host,
-		network:     network,
-		securityOpt: parseSecurityOpt(os.Getenv("EDVABE_SECURITY_OPT")),
-		extraBinds:  parseExtraBinds(os.Getenv("EDVABE_EXTRA_BINDS")),
-		endpoints:   make(map[string]endpoint),
+		cli:                   cli,
+		host:                  host,
+		network:               network,
+		securityOpt:           securityOpt,
+		systempathsUnconfined: systempathsUnconfined,
+		extraBinds:            parseExtraBinds(os.Getenv("EDVABE_EXTRA_BINDS")),
+		endpoints:             make(map[string]endpoint),
 	}, nil
 }
 
@@ -109,14 +119,25 @@ func (r *Runtime) Network() string { return r.network }
 // parseSecurityOpt splits a comma-separated EDVABE_SECURITY_OPT value into the
 // list passed to HostConfig.SecurityOpt (e.g. "seccomp=unconfined,apparmor=unconfined").
 // Blank entries are dropped; an empty/unset value yields nil (Docker defaults).
-func parseSecurityOpt(raw string) []string {
-	var opts []string
+//
+// "systempaths=unconfined" is handled specially: it is Docker CLI sugar, not an
+// API-level SecurityOpt (the daemon rejects it verbatim), so it is consumed here
+// and reported via the bool. The caller translates it into empty
+// MaskedPaths/ReadonlyPaths — exactly like `docker run --security-opt
+// systempaths=unconfined`.
+func parseSecurityOpt(raw string) (opts []string, systempathsUnconfined bool) {
 	for _, part := range strings.Split(raw, ",") {
-		if p := strings.TrimSpace(part); p != "" {
-			opts = append(opts, p)
+		p := strings.TrimSpace(part)
+		if p == "" {
+			continue
 		}
+		if strings.EqualFold(p, "systempaths=unconfined") {
+			systempathsUnconfined = true
+			continue
+		}
+		opts = append(opts, p)
 	}
-	return opts
+	return opts, systempathsUnconfined
 }
 
 // parseExtraBinds parses EDVABE_EXTRA_BINDS ("host:ctr[:ro],host2:ctr2") into

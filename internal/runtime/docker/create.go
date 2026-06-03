@@ -70,6 +70,16 @@ func (r *Runtime) Create(ctx context.Context, req runtime.CreateRequest) (*runti
 	if len(r.securityOpt) > 0 {
 		hostCfg.SecurityOpt = r.securityOpt
 	}
+	if r.systempathsUnconfined {
+		// Empty (non-nil) slices override Docker's default /proc + /sys masking
+		// with NO masking — the same effect as `docker run --security-opt
+		// systempaths=unconfined`. Required so in-sandbox bubblewrap can mount a
+		// fresh /proc (Docker masks /proc/* by default, which makes bwrap fail
+		// with "Can't mount proc on /newroot/proc"). Opt-in via
+		// EDVABE_SECURITY_OPT; relaxes the sandbox's isolation.
+		hostCfg.MaskedPaths = []string{}
+		hostCfg.ReadonlyPaths = []string{}
+	}
 	if r.network != "" {
 		hostCfg.NetworkMode = container.NetworkMode(r.network)
 	}
