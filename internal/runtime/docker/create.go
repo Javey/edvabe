@@ -50,6 +50,7 @@ func (r *Runtime) Create(ctx context.Context, req runtime.CreateRequest) (*runti
 			Target: ctrPath,
 		})
 	}
+	mounts = append(mounts, r.extraBinds...)
 
 	cfg := &container.Config{
 		Image:  req.Image,
@@ -61,10 +62,23 @@ func (r *Runtime) Create(ctx context.Context, req runtime.CreateRequest) (*runti
 	// podman, flatpak-builder, …) work inside the sandbox container.
 	// Safe under edvabe's single-user local-dev threat model; apparmor=
 	// unconfined is silently ignored on hosts without AppArmor (macOS
-	// Docker Desktop, Arch, Fedora).
+	// Docker Desktop, Arch, Fedora). EDVABE_SECURITY_OPT overrides this default.
 	hostCfg := &container.HostConfig{
 		Mounts:      mounts,
 		SecurityOpt: []string{"seccomp=unconfined", "apparmor=unconfined"},
+	}
+	if len(r.securityOpt) > 0 {
+		hostCfg.SecurityOpt = r.securityOpt
+	}
+	if r.systempathsUnconfined {
+		// Empty (non-nil) slices override Docker's default /proc + /sys masking
+		// with NO masking — the same effect as `docker run --security-opt
+		// systempaths=unconfined`. Required so in-sandbox bubblewrap can mount a
+		// fresh /proc (Docker masks /proc/* by default, which makes bwrap fail
+		// with "Can't mount proc on /newroot/proc"). Opt-in via
+		// EDVABE_SECURITY_OPT; relaxes the sandbox's isolation.
+		hostCfg.MaskedPaths = []string{}
+		hostCfg.ReadonlyPaths = []string{}
 	}
 	if r.network != "" {
 		hostCfg.NetworkMode = container.NetworkMode(r.network)

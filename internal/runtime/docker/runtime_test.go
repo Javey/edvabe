@@ -1,8 +1,36 @@
 package docker
 
 import (
+	"slices"
 	"testing"
 )
+
+func TestParseSecurityOpt(t *testing.T) {
+	cases := []struct {
+		name      string
+		raw       string
+		wantOpts  []string
+		wantSysUC bool
+	}{
+		{"empty", "", nil, false},
+		{"single", "seccomp=unconfined", []string{"seccomp=unconfined"}, false},
+		{"blanks trimmed", " seccomp=unconfined , , apparmor=unconfined ", []string{"seccomp=unconfined", "apparmor=unconfined"}, false},
+		{"systempaths consumed", "seccomp=unconfined,apparmor=unconfined,systempaths=unconfined", []string{"seccomp=unconfined", "apparmor=unconfined"}, true},
+		{"systempaths only", "systempaths=unconfined", nil, true},
+		{"systempaths case-insensitive", "SystemPaths=Unconfined", nil, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			opts, sysUC := parseSecurityOpt(tc.raw)
+			if !slices.Equal(opts, tc.wantOpts) {
+				t.Errorf("opts = %#v, want %#v", opts, tc.wantOpts)
+			}
+			if sysUC != tc.wantSysUC {
+				t.Errorf("systempathsUnconfined = %v, want %v", sysUC, tc.wantSysUC)
+			}
+		})
+	}
+}
 
 func TestDiscoverHostHonorsDockerHostEnv(t *testing.T) {
 	t.Setenv("DOCKER_HOST", "tcp://example.invalid:2375")

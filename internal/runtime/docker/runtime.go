@@ -13,8 +13,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
+	"github.com/moby/moby/api/types/mount"
 	"github.com/moby/moby/client"
 
 	"github.com/contember/edvabe/internal/runtime"
@@ -38,6 +40,26 @@ type Runtime struct {
 	cli     *client.Client
 	host    string
 	network string // Docker network sandboxes are attached to; empty = default bridge
+
+	// securityOpt is applied verbatim as HostConfig.SecurityOpt on every spawned
+	// sandbox (from EDVABE_SECURITY_OPT). Empty = Docker defaults. Use e.g.
+	// "seccomp=unconfined" to let in-sandbox tooling create user namespaces
+	// (bubblewrap). Opt-in: it relaxes the sandbox's isolation.
+	securityOpt []string
+
+	// systempathsUnconfined clears MaskedPaths/ReadonlyPaths on every spawned
+	// sandbox (set when EDVABE_SECURITY_OPT contains "systempaths=unconfined").
+	// Docker masks /proc/* by default; clearing it lets in-sandbox bubblewrap
+	// mount a fresh /proc. Translated rather than passed through because the
+	// daemon rejects systempaths as an API-level SecurityOpt. Opt-in: relaxes
+	// the sandbox's isolation.
+	systempathsUnconfined bool
+
+	// extraBinds are bind mounts (from EDVABE_EXTRA_BINDS) added to every spawned
+	// sandbox in addition to the per-request ones. Format per entry:
+	// "hostPath:containerPath[:ro]". Useful to share host fixtures (e.g. LLM
+	// snapshots) with sandboxes for deterministic local testing. Opt-in.
+	extraBinds []mount.Mount
 
 	mu        sync.RWMutex
 	endpoints map[string]endpoint
@@ -78,17 +100,68 @@ func New() (*Runtime, error) {
 	if network == "" {
 		network = detectOwnNetwork(cli)
 	}
+	securityOpt, systempathsUnconfined := parseSecurityOpt(os.Getenv("EDVABE_SECURITY_OPT"))
 	return &Runtime{
-		cli:       cli,
-		host:      host,
-		network:   network,
-		endpoints: make(map[string]endpoint),
+		cli:                   cli,
+		host:                  host,
+		network:               network,
+		securityOpt:           securityOpt,
+		systempathsUnconfined: systempathsUnconfined,
+		extraBinds:            parseExtraBinds(os.Getenv("EDVABE_EXTRA_BINDS")),
+		endpoints:             make(map[string]endpoint),
 	}, nil
 }
 
 // Network reports the Docker network name sandbox containers are
 // attached to ("" means default bridge).
 func (r *Runtime) Network() string { return r.network }
+
+// parseSecurityOpt splits a comma-separated EDVABE_SECURITY_OPT value into the
+// list passed to HostConfig.SecurityOpt (e.g. "seccomp=unconfined,apparmor=unconfined").
+// Blank entries are dropped; an empty/unset value yields nil (Docker defaults).
+//
+// "systempaths=unconfined" is handled specially: it is Docker CLI sugar, not an
+// API-level SecurityOpt (the daemon rejects it verbatim), so it is consumed here
+// and reported via the bool. The caller translates it into empty
+// MaskedPaths/ReadonlyPaths — exactly like `docker run --security-opt
+// systempaths=unconfined`.
+func parseSecurityOpt(raw string) (opts []string, systempathsUnconfined bool) {
+	for _, part := range strings.Split(raw, ",") {
+		p := strings.TrimSpace(part)
+		if p == "" {
+			continue
+		}
+		if strings.EqualFold(p, "systempaths=unconfined") {
+			systempathsUnconfined = true
+			continue
+		}
+		opts = append(opts, p)
+	}
+	return opts, systempathsUnconfined
+}
+
+// parseExtraBinds parses EDVABE_EXTRA_BINDS ("host:ctr[:ro],host2:ctr2") into
+// bind mounts applied to every sandbox. Malformed entries are skipped.
+func parseExtraBinds(raw string) []mount.Mount {
+	var binds []mount.Mount
+	for _, part := range strings.Split(raw, ",") {
+		p := strings.TrimSpace(part)
+		if p == "" {
+			continue
+		}
+		segs := strings.Split(p, ":")
+		if len(segs) < 2 || segs[0] == "" || segs[1] == "" {
+			continue
+		}
+		binds = append(binds, mount.Mount{
+			Type:     mount.TypeBind,
+			Source:   segs[0],
+			Target:   segs[1],
+			ReadOnly: len(segs) >= 3 && segs[2] == "ro",
+		})
+	}
+	return binds
+}
 
 // OwnIPv4 returns edvabe's own IPv4 address on the sandbox network, or
 // "" when it can't be determined (not containerized, inspection failed,
