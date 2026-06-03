@@ -5,6 +5,29 @@ All notable changes to edvabe land here. Format roughly follows
 
 ## Unreleased
 
+## v0.3.0 — 2026-06-03
+
+### Added
+
+- **Configurable container security via `EDVABE_SECURITY_OPT`.** Sets
+  `HostConfig.SecurityOpt` (comma-separated) on every spawned sandbox.
+  When set it replaces edvabe's default `seccomp=unconfined,
+  apparmor=unconfined`; unset keeps that default. `systempaths=unconfined`
+  is recognized specially and translated to empty
+  `MaskedPaths`/`ReadonlyPaths` (Docker CLI sugar the daemon rejects as an
+  API-level opt) so in-sandbox bubblewrap can mount a fresh `/proc`.
+  Opt-in; relaxes the sandbox's isolation.
+- **Extra bind mounts via `EDVABE_EXTRA_BINDS`.** Adds bind mounts
+  (`host:ctr[:ro]`, comma-separated) to every spawned sandbox on top of
+  the per-request ones. Lets the operator share host fixtures (e.g. LLM
+  replay snapshots) with sandboxes for deterministic local testing.
+  Opt-in.
+
+### Fixed
+
+- Dashboard overview now lists sandboxes and templates in a stable order
+  (by `CreatedAt`, then `ID`) instead of Go map iteration order.
+
 ## v0.2.0 — 2026-04-24
 
 ### Fixed
