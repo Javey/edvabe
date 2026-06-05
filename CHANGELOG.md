@@ -5,6 +5,17 @@ All notable changes to edvabe land here. Format roughly follows
 
 ## Unreleased
 
+### Added
+
+- **Skip the startup envd/base rebuild via `EDVABE_REUSE_IMAGES=1`.**
+  When set, `edvabe serve` reuses an existing `edvabe/base:latest` /
+  `edvabe/envd-source:latest` instead of rebuilding it (the multi-minute
+  envd compile). Default off — a bumped `EnvdSourceSHA` or Dockerfile
+  always triggers a fresh rebuild for correctness. Intended for CI, which
+  sets it after restoring the images from a cache: the cache key MUST pin
+  the edvabe version so a bumped image busts it (else a stale envd would
+  be reused). Opt-in.
+
 ## v0.3.0 — 2026-06-03
 
 ### Added

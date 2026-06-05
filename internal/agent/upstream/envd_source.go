@@ -30,6 +30,10 @@ func EnsureEnvdSource(ctx context.Context, tag string) error {
 	if tag == "" {
 		return fmt.Errorf("EnsureEnvdSource: tag is required")
 	}
+	if reuseExistingImages() && imageExists(ctx, tag) {
+		fmt.Fprintf(os.Stderr, "edvabe: reusing existing image %s (EDVABE_REUSE_IMAGES=1)\n", tag)
+		return nil
+	}
 
 	tarBytes, err := envdSourceBuildContext()
 	if err != nil {

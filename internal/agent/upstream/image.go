@@ -76,6 +76,26 @@ func PullBase(ctx context.Context) error {
 	return nil
 }
 
+// imageExists reports whether a local Docker image with the given tag
+// (or id) is present, via `docker image inspect`.
+func imageExists(ctx context.Context, tag string) bool {
+	cmd := exec.CommandContext(ctx, "docker", "image", "inspect", tag)
+	return cmd.Run() == nil
+}
+
+// reuseExistingImages reports whether edvabe should skip rebuilding the
+// envd-source / base images when they already exist locally. Opt-in via
+// EDVABE_REUSE_IMAGES=1, default off — so a bumped EnvdSourceSHA or
+// Dockerfile always triggers a fresh rebuild for correctness.
+//
+// CI sets it after `docker load`-ing images restored from a cache, to
+// skip the multi-minute envd compile on a fresh runner with no layer
+// cache. The cache key MUST pin the edvabe version so a bumped image
+// busts it (else a stale envd would be reused).
+func reuseExistingImages() bool {
+	return os.Getenv("EDVABE_REUSE_IMAGES") == "1"
+}
+
 // EnsureBaseImage runs a multi-stage `docker build` that compiles envd
 // from source (pinned via EnvdSourceSHA) and layers it onto the pinned
 // e2bdev/base image, producing `tag` — typically "edvabe/base:latest".
@@ -89,6 +109,10 @@ func PullBase(ctx context.Context) error {
 func EnsureBaseImage(ctx context.Context, tag string) error {
 	if tag == "" {
 		return fmt.Errorf("EnsureBaseImage: tag is required")
+	}
+	if reuseExistingImages() && imageExists(ctx, tag) {
+		fmt.Fprintf(os.Stderr, "edvabe: reusing existing image %s (EDVABE_REUSE_IMAGES=1)\n", tag)
+		return nil
 	}
 	cmd := exec.CommandContext(ctx, "docker", "build",
 		"--build-arg", "ENVD_SHA="+EnvdSourceSHA,
