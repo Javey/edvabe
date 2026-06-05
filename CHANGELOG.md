@@ -5,6 +5,8 @@ All notable changes to edvabe land here. Format roughly follows
 
 ## Unreleased
 
+## v0.4.0 — 2026-06-05
+
 ### Added
 
 - **Skip the startup envd/base rebuild via `EDVABE_REUSE_IMAGES=1`.**
