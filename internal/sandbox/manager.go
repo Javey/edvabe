@@ -158,8 +158,8 @@ type Options struct {
 	// DefaultStoppedGCAfter. Negative disables GC.
 	StoppedGCAfter time.Duration
 	// KeepaliveEnabled controls whether data-plane traffic resets the
-	// idle timer. Nil = default on. Pass &false to disable.
-	KeepaliveEnabled *bool
+	// idle timer. Defaults to true via main.go; set false to disable.
+	KeepaliveEnabled bool
 	// KeepaliveCoalesce is the minimum interval between two
 	// MarkActivity writes for the same sandbox. Prevents lock
 	// contention under high-frequency data-plane traffic. Defaults
@@ -196,10 +196,7 @@ func NewManager(opts Options) (*Manager, error) {
 	if opts.KeepaliveCoalesce == 0 {
 		opts.KeepaliveCoalesce = time.Second
 	}
-	keepaliveEnabled := true
-	if opts.KeepaliveEnabled != nil {
-		keepaliveEnabled = *opts.KeepaliveEnabled
-	}
+	keepaliveEnabled := opts.KeepaliveEnabled
 	return &Manager{
 		rt:                opts.Runtime,
 		ap:                opts.Agent,

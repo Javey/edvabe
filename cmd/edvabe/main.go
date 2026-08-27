@@ -171,7 +171,7 @@ func serveCmd(args []string) {
 		FreezeDuration:    *freezeDuration,
 		MaxFrozen:         *maxFrozen,
 		StoppedGCAfter:    *stoppedGCAfter,
-		KeepaliveEnabled:  envBoolPtr("EDVABE_KEEPALIVE_ENABLED"),
+		KeepaliveEnabled:  os.Getenv("EDVABE_KEEPALIVE_ENABLED") != "0",
 		KeepaliveCoalesce: envDurationOr("EDVABE_KEEPALIVE_COALESCE", time.Second),
 	})
 	if err != nil {
@@ -421,13 +421,4 @@ func envIntOr(key string, fallback int) int {
 		return fallback
 	}
 	return n
-}
-
-func envBoolPtr(key string) *bool {
-	v := os.Getenv(key)
-	if v == "" {
-		return nil
-	}
-	b := v != "0"
-	return &b
 }
