@@ -164,15 +164,15 @@ func serveCmd(args []string) {
 		domain = fmt.Sprintf("localhost:%d", *port)
 	}
 	mgr, err := sandbox.NewManager(sandbox.Options{
-		Runtime:            rt,
-		Agent:              ap,
-		Domain:             domain,
-		Resolver:           template.NewSandboxResolver(templateStore),
-		FreezeDuration:     *freezeDuration,
-		MaxFrozen:          *maxFrozen,
-		StoppedGCAfter:     *stoppedGCAfter,
-		KeepaliveEnabled:   os.Getenv("EDVABE_KEEPALIVE_ENABLED") != "0",
-		KeepaliveCoalesce:  envDurationOr("EDVABE_KEEPALIVE_COALESCE", time.Second),
+		Runtime:           rt,
+		Agent:             ap,
+		Domain:            domain,
+		Resolver:          template.NewSandboxResolver(templateStore),
+		FreezeDuration:    *freezeDuration,
+		MaxFrozen:         *maxFrozen,
+		StoppedGCAfter:    *stoppedGCAfter,
+		KeepaliveEnabled:  envBoolPtr("EDVABE_KEEPALIVE_ENABLED"),
+		KeepaliveCoalesce: envDurationOr("EDVABE_KEEPALIVE_COALESCE", time.Second),
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "serve: init manager: %v\n", err)
@@ -421,4 +421,13 @@ func envIntOr(key string, fallback int) int {
 		return fallback
 	}
 	return n
+}
+
+func envBoolPtr(key string) *bool {
+	v := os.Getenv(key)
+	if v == "" {
+		return nil
+	}
+	b := v != "0"
+	return &b
 }
