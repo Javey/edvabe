@@ -226,7 +226,7 @@ func serveCmd(args []string) {
 		FileSigner: fileSigner,
 		PublicBase: os.Getenv("EDVABE_PUBLIC_BASE"),
 	})
-	proxyHandler := api.NewProxy(mgr, rt)
+	proxyHandler := api.NewProxy(mgr, rt, mgr)
 	dashboardHandler := dashboard.NewHandler(dashboard.HandlerOptions{
 		Manager:   mgr,
 		Runtime:   rt,
