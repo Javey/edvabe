@@ -1,6 +1,7 @@
 package sandbox
 
 import (
+	"encoding/json"
 	"strconv"
 	"strings"
 	"time"
@@ -20,6 +21,7 @@ const (
 	LabelTokenTraffic  = "edvabe.sandbox.token.traffic"
 	LabelOnTimeout     = "edvabe.sandbox.ontimeout"
 	LabelTimeout       = "edvabe.sandbox.timeout"
+	LabelVolumeMounts  = "edvabe.sandbox.volume.mounts"
 
 	// labelImageTemplateID is the template-id label the template build
 	// system stamps on the image itself. Used as a fallback when a
@@ -33,8 +35,8 @@ const (
 // label set stays minimal.
 func buildSandboxLabels(s *Sandbox) map[string]string {
 	labels := map[string]string{
-		LabelTemplateID: s.TemplateID,
-		LabelTokenEnvd:  s.EnvdToken,
+		LabelTemplateID:   s.TemplateID,
+		LabelTokenEnvd:    s.EnvdToken,
 		LabelTokenTraffic: s.TrafficToken,
 	}
 	if s.Alias != "" {
@@ -45,6 +47,11 @@ func buildSandboxLabels(s *Sandbox) map[string]string {
 	}
 	if s.Timeout > 0 {
 		labels[LabelTimeout] = strconv.FormatInt(int64(s.Timeout.Seconds()), 10)
+	}
+	if len(s.VolumeMounts) > 0 {
+		if raw, err := json.Marshal(volumeMountLabel(s.VolumeMounts)); err == nil {
+			labels[LabelVolumeMounts] = string(raw)
+		}
 	}
 	return labels
 }
@@ -92,7 +99,43 @@ func sandboxFromManaged(mc runtime.ManagedContainer) *Sandbox {
 			s.Timeout = time.Duration(secs) * time.Second
 		}
 	}
+	if raw := mc.Labels[LabelVolumeMounts]; raw != "" {
+		s.VolumeMounts = parseVolumeMountLabel(raw)
+	}
 	return s
+}
+
+// labelVolumeMount is the JSON shape stored in the Docker label. It
+// only persists the logical name and path — the DockerName is derived
+// from the volume ID at create time and not needed for rehydration
+// (Docker mounts survive container stop/start/restart because the
+// mount config is part of the container, not edvabe's memory).
+type labelVolumeMount struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
+func volumeMountLabel(mounts []VolumeMount) []labelVolumeMount {
+	out := make([]labelVolumeMount, len(mounts))
+	for i, m := range mounts {
+		out[i] = labelVolumeMount{Name: m.Name, Path: m.Path}
+	}
+	return out
+}
+
+func parseVolumeMountLabel(raw string) []VolumeMount {
+	var labels []labelVolumeMount
+	if err := json.Unmarshal([]byte(raw), &labels); err != nil {
+		return nil
+	}
+	out := make([]VolumeMount, len(labels))
+	for i, l := range labels {
+		out[i] = VolumeMount{Name: l.Name, Path: l.Path}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // extractMetadataFromLabels pulls user metadata (edvabe.meta.* keys)

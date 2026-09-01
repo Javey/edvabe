@@ -43,12 +43,23 @@ func (r *Runtime) Create(ctx context.Context, req runtime.CreateRequest) (*runti
 	}
 
 	var mounts []mount.Mount
-	for hostPath, ctrPath := range req.BindMounts {
-		mounts = append(mounts, mount.Mount{
-			Type:   mount.TypeBind,
-			Source: hostPath,
-			Target: ctrPath,
-		})
+	for _, m := range req.Mounts {
+		switch m.Type {
+		case runtime.MountTypeBind:
+			mounts = append(mounts, mount.Mount{
+				Type:     mount.TypeBind,
+				Source:   m.Source,
+				Target:   m.Target,
+				ReadOnly: m.ReadOnly,
+			})
+		case runtime.MountTypeVolume:
+			mounts = append(mounts, mount.Mount{
+				Type:     mount.TypeVolume,
+				Source:   m.Source,
+				Target:   m.Target,
+				ReadOnly: m.ReadOnly,
+			})
+		}
 	}
 	mounts = append(mounts, r.extraBinds...)
 

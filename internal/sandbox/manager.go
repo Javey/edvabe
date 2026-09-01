@@ -286,6 +286,12 @@ type CreateOptions struct {
 	// negative number.
 	CPUCount int
 	MemoryMB int
+	// VolumeMounts is the resolved list of volume mounts to attach
+	// to the sandbox container. Each entry carries the logical E2B
+	// name/path (for API responses) and the Docker volume name (for
+	// the runtime). The control plane validates and resolves these
+	// before calling Create.
+	VolumeMounts []VolumeMount
 }
 
 // Create mints a fresh sandbox, starts its container via the runtime,
@@ -332,7 +338,19 @@ func (m *Manager) Create(ctx context.Context, opts CreateOptions) (*Sandbox, err
 		TrafficToken: trafficToken,
 		OnTimeout:    opts.OnTimeout,
 		Timeout:      opts.Timeout,
+		VolumeMounts: opts.VolumeMounts,
 	})
+
+	// Build the runtime mount list: user volume mounts first, then
+	// any operator-controlled extra binds are appended by the runtime.
+	var rtMounts []runtime.Mount
+	for _, vm := range opts.VolumeMounts {
+		rtMounts = append(rtMounts, runtime.Mount{
+			Type:   runtime.MountTypeVolume,
+			Source: vm.DockerName,
+			Target: vm.Path,
+		})
+	}
 
 	handle, err := m.rt.Create(ctx, runtime.CreateRequest{
 		SandboxID:  id,
@@ -342,6 +360,7 @@ func (m *Manager) Create(ctx context.Context, opts CreateOptions) (*Sandbox, err
 		Timeout:    opts.Timeout,
 		AgentPort:  m.ap.Port(),
 		AgentToken: envdToken,
+		Mounts:     rtMounts,
 		StartCmd:   resolution.StartCmd,
 		ReadyCmd:   resolution.ReadyCmd,
 		CPUCount:   cpuCount,
@@ -400,6 +419,7 @@ func (m *Manager) Create(ctx context.Context, opts CreateOptions) (*Sandbox, err
 		LastActiveAt: now,
 		CPUCount:     cpuCount,
 		MemoryMB:     memoryMB,
+		VolumeMounts: cloneVolumeMounts(opts.VolumeMounts),
 	}
 
 	m.mu.Lock()
@@ -884,5 +904,14 @@ func cloneMap(m map[string]string) map[string]string {
 	for k, v := range m {
 		out[k] = v
 	}
+	return out
+}
+
+func cloneVolumeMounts(mounts []VolumeMount) []VolumeMount {
+	if len(mounts) == 0 {
+		return nil
+	}
+	out := make([]VolumeMount, len(mounts))
+	copy(out, mounts)
 	return out
 }

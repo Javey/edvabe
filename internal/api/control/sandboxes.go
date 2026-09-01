@@ -3,7 +3,9 @@ package control
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -28,12 +30,17 @@ type newSandboxRequest struct {
 	CPUCount int `json:"cpuCount,omitempty"`
 	MemoryMB int `json:"memoryMB,omitempty"`
 	// Accepted for wire compat but not enforced in edvabe.
-	Secure              bool              `json:"secure,omitempty"`
-	AllowInternetAccess *bool             `json:"allow_internet_access,omitempty"`
-	Network             *json.RawMessage  `json:"network,omitempty"`
-	VolumeMounts        []json.RawMessage `json:"volumeMounts,omitempty"`
-	MCP                 *json.RawMessage  `json:"mcp,omitempty"`
-	AutoResume          *json.RawMessage  `json:"autoResume,omitempty"`
+	Secure              bool                 `json:"secure,omitempty"`
+	AllowInternetAccess *bool                `json:"allow_internet_access,omitempty"`
+	Network             *json.RawMessage     `json:"network,omitempty"`
+	VolumeMounts        []sandboxVolumeMount `json:"volumeMounts,omitempty"`
+	MCP                 *json.RawMessage     `json:"mcp,omitempty"`
+	AutoResume          *json.RawMessage     `json:"autoResume,omitempty"`
+}
+
+type sandboxVolumeMount struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
 }
 
 // newSandboxLifecycleInput mirrors the SDK's NewSandbox.lifecycle field.
@@ -61,15 +68,21 @@ type sandboxResponse struct {
 
 type sandboxDetailResponse struct {
 	sandboxResponse
-	State               sandbox.State        `json:"state"`
-	CPUCount            int                  `json:"cpuCount"`
-	MemoryMB            int64                `json:"memoryMB"`
-	DiskSizeMB          int64                `json:"diskSizeMB"`
-	Lifecycle           sandboxLifecycle     `json:"lifecycle"`
-	Network             sandboxNetworkConfig `json:"network"`
-	AllowInternetAccess bool                 `json:"allowInternetAccess"`
-	EnvVars             map[string]string    `json:"envVars,omitempty"`
-	LastActiveAt        time.Time            `json:"lastActiveAt"`
+	State               sandbox.State         `json:"state"`
+	CPUCount            int                   `json:"cpuCount"`
+	MemoryMB            int64                 `json:"memoryMB"`
+	DiskSizeMB          int64                 `json:"diskSizeMB"`
+	Lifecycle           sandboxLifecycle      `json:"lifecycle"`
+	Network             sandboxNetworkConfig  `json:"network"`
+	AllowInternetAccess bool                  `json:"allowInternetAccess"`
+	EnvVars             map[string]string     `json:"envVars,omitempty"`
+	LastActiveAt        time.Time             `json:"lastActiveAt"`
+	VolumeMounts        []volumeMountResponse `json:"volumeMounts"`
+}
+
+type volumeMountResponse struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
 }
 
 type sandboxLifecycle struct {
@@ -91,22 +104,33 @@ type timeoutRequest struct {
 	Timeout int `json:"timeout"`
 }
 
-func createSandbox(manager sandboxManager, provider versionProvider, w http.ResponseWriter, r *http.Request) {
+func createSandbox(manager sandboxManager, provider versionProvider, volumes *volumeStore, w http.ResponseWriter, r *http.Request) {
 	var req newSandboxRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		api.WriteError(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 
+	var volumeMounts []sandbox.VolumeMount
+	if len(req.VolumeMounts) > 0 {
+		resolved, err := resolveVolumeMounts(req.VolumeMounts, volumes)
+		if err != nil {
+			api.WriteError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		volumeMounts = resolved
+	}
+
 	sbx, err := manager.Create(r.Context(), sandbox.CreateOptions{
-		TemplateID: req.TemplateID,
-		Alias:      req.Alias,
-		Metadata:   req.Metadata,
-		EnvVars:    req.EnvVars,
-		Timeout:    time.Duration(req.Timeout) * time.Second,
-		OnTimeout:  resolveOnTimeout(req),
-		CPUCount:   req.CPUCount,
-		MemoryMB:   req.MemoryMB,
+		TemplateID:   req.TemplateID,
+		Alias:        req.Alias,
+		Metadata:     req.Metadata,
+		EnvVars:      req.EnvVars,
+		Timeout:      time.Duration(req.Timeout) * time.Second,
+		OnTimeout:    resolveOnTimeout(req),
+		CPUCount:     req.CPUCount,
+		MemoryMB:     req.MemoryMB,
+		VolumeMounts: volumeMounts,
 	})
 	if err != nil {
 		api.WriteError(w, http.StatusInternalServerError, err.Error())
@@ -441,13 +465,13 @@ func getSandboxLogs(manager sandboxManager, w http.ResponseWriter, r *http.Reque
 // ──────────────────────────────────────────────────────────────────────
 
 type metricsEntry struct {
-	Timestamp          time.Time `json:"timestamp"`
-	CPUCount           int       `json:"cpuCount"`
-	CPUUsedPct         float64   `json:"cpuUsedPct"`
-	MemTotalMiB        int64     `json:"memTotalMiB"`
-	MemUsedMiB         int64     `json:"memUsedMiB"`
-	DiskTotalMiB       int64     `json:"diskTotalMiB"`
-	DiskUsedMiB        int64     `json:"diskUsedMiB"`
+	Timestamp    time.Time `json:"timestamp"`
+	CPUCount     int       `json:"cpuCount"`
+	CPUUsedPct   float64   `json:"cpuUsedPct"`
+	MemTotalMiB  int64     `json:"memTotalMiB"`
+	MemUsedMiB   int64     `json:"memUsedMiB"`
+	DiskTotalMiB int64     `json:"diskTotalMiB"`
+	DiskUsedMiB  int64     `json:"diskUsedMiB"`
 }
 
 func getSandboxMetrics(manager sandboxManager, rt runtime.Runtime, w http.ResponseWriter, r *http.Request) {
@@ -467,11 +491,11 @@ func getSandboxMetrics(manager sandboxManager, rt runtime.Runtime, w http.Respon
 		return
 	}
 	writeJSON(w, http.StatusOK, []metricsEntry{{
-		Timestamp:    time.Now(),
-		CPUUsedPct:   stats.CPUUsedPercent,
-		MemTotalMiB:  stats.MemoryLimitMB,
-		MemUsedMiB:   stats.MemoryUsedMB,
-		DiskUsedMiB:  stats.DiskUsedMB,
+		Timestamp:   time.Now(),
+		CPUUsedPct:  stats.CPUUsedPercent,
+		MemTotalMiB: stats.MemoryLimitMB,
+		MemUsedMiB:  stats.MemoryUsedMB,
+		DiskUsedMiB: stats.DiskUsedMB,
 	}})
 }
 
@@ -571,6 +595,7 @@ func toSandboxDetailResponse(manager sandboxManager, provider versionProvider, s
 		AllowInternetAccess: true,
 		EnvVars:             sbx.EnvVars,
 		LastActiveAt:        sbx.LastActiveAt,
+		VolumeMounts:        toVolumeMountResponse(sbx.VolumeMounts),
 	}
 	// Fall back to runtime stats for sandboxes created before this
 	// field existed (CPUCount/MemoryMB == 0 means "unlimited" on the
@@ -582,6 +607,17 @@ func toSandboxDetailResponse(manager sandboxManager, provider versionProvider, s
 		resp.DiskSizeMB = stats.DiskUsedMB
 	}
 	return resp
+}
+
+func toVolumeMountResponse(mounts []sandbox.VolumeMount) []volumeMountResponse {
+	if len(mounts) == 0 {
+		return []volumeMountResponse{}
+	}
+	out := make([]volumeMountResponse, len(mounts))
+	for i, m := range mounts {
+		out[i] = volumeMountResponse{Name: m.Name, Path: m.Path}
+	}
+	return out
 }
 
 // resolveOnTimeout picks the sandbox lifecycle mode from the incoming
@@ -602,4 +638,46 @@ func resolveOnTimeout(req newSandboxRequest) sandbox.OnTimeoutMode {
 		return sandbox.OnTimeoutPause
 	}
 	return sandbox.OnTimeoutKill
+}
+
+const maxVolumeMounts = 16
+
+// resolveVolumeMounts validates each volumeMount entry and resolves
+// the logical volume name to a Docker volume source. Returns an error
+// if any mount is invalid or references an unknown volume.
+func resolveVolumeMounts(mounts []sandboxVolumeMount, volumes *volumeStore) ([]sandbox.VolumeMount, error) {
+	if len(mounts) > maxVolumeMounts {
+		return nil, fmt.Errorf("too many volume mounts (max %d)", maxVolumeMounts)
+	}
+	seen := make(map[string]bool, len(mounts))
+	out := make([]sandbox.VolumeMount, 0, len(mounts))
+	for _, m := range mounts {
+		if m.Name == "" {
+			return nil, errors.New("volumeMount.name is required")
+		}
+		if m.Path == "" {
+			return nil, errors.New("volumeMount.path is required")
+		}
+		cleaned := path.Clean(m.Path)
+		if !path.IsAbs(cleaned) {
+			return nil, fmt.Errorf("volumeMount.path %q is not absolute", m.Path)
+		}
+		if cleaned == "/" {
+			return nil, errors.New("volumeMount.path cannot be /")
+		}
+		if seen[cleaned] {
+			return nil, fmt.Errorf("duplicate volumeMount.path %q", cleaned)
+		}
+		rec, ok := volumes.resolveByName(m.Name)
+		if !ok {
+			return nil, fmt.Errorf("volume %q not found", m.Name)
+		}
+		seen[cleaned] = true
+		out = append(out, sandbox.VolumeMount{
+			Name:       m.Name,
+			Path:       cleaned,
+			DockerName: dockerNameForVolumeID(rec.VolumeID),
+		})
+	}
+	return out, nil
 }

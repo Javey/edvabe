@@ -165,72 +165,8 @@ func (s *accessTokenStore) delete(w http.ResponseWriter, r *http.Request) {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// Volumes — in-memory registry. No real bind-mount in v1.
+// Volumes — moved to volumes.go (runtime-backed).
 // ──────────────────────────────────────────────────────────────────────
-
-type volumeEntry struct {
-	VolumeID string `json:"volumeID"`
-	Name     string `json:"name"`
-}
-
-type volumeStore struct {
-	volumes []volumeEntry
-}
-
-func newVolumeStore() *volumeStore {
-	return &volumeStore{}
-}
-
-func (s *volumeStore) list(w http.ResponseWriter, _ *http.Request) {
-	out := s.volumes
-	if out == nil {
-		out = []volumeEntry{}
-	}
-	writeJSON(w, http.StatusOK, out)
-}
-
-func (s *volumeStore) create(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Name string `json:"name"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		api.WriteError(w, http.StatusBadRequest, "invalid JSON body")
-		return
-	}
-	entry := volumeEntry{
-		VolumeID: "vol_" + randomHex(8),
-		Name:     req.Name,
-	}
-	s.volumes = append(s.volumes, entry)
-	writeJSON(w, http.StatusCreated, entry)
-}
-
-func (s *volumeStore) get(w http.ResponseWriter, r *http.Request) {
-	id := strings.TrimPrefix(r.URL.Path, "/volumes/")
-	for _, v := range s.volumes {
-		if v.VolumeID == id || v.Name == id {
-			writeJSON(w, http.StatusOK, map[string]any{
-				"volumeID": v.VolumeID,
-				"name":     v.Name,
-				"token":    "fake-volume-jwt",
-			})
-			return
-		}
-	}
-	api.WriteError(w, http.StatusNotFound, "volume not found")
-}
-
-func (s *volumeStore) delete(w http.ResponseWriter, r *http.Request) {
-	id := strings.TrimPrefix(r.URL.Path, "/volumes/")
-	for i, v := range s.volumes {
-		if v.VolumeID == id || v.Name == id {
-			s.volumes = append(s.volumes[:i], s.volumes[i+1:]...)
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-	}
-	api.WriteError(w, http.StatusNotFound, "volume not found")
-}
 
 // ──────────────────────────────────────────────────────────────────────
 // Snapshots list — returns empty array. Individual snapshot creation

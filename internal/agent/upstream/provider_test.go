@@ -70,7 +70,7 @@ func TestInitAgentPostsExpectedPayload(t *testing.T) {
 		EnvVars:        map[string]string{"FOO": "bar"},
 		DefaultUser:    "user",
 		DefaultWorkdir: "/home/user",
-		VolumeMounts:   []agent.VolumeMount{{Name: "vol", MountPath: "/volumes/vol"}},
+		VolumeMounts:   []agent.VolumeMount{{NFSTarget: "server:/export", Path: "/volumes/vol"}},
 	})
 	if err != nil {
 		t.Fatalf("InitAgent: %v", err)
@@ -87,7 +87,7 @@ func TestInitAgentPostsExpectedPayload(t *testing.T) {
 	if got.DefaultWorkdir != "/home/user" {
 		t.Errorf("DefaultWorkdir = %q", got.DefaultWorkdir)
 	}
-	if len(got.VolumeMounts) != 1 || got.VolumeMounts[0].MountPath != "/volumes/vol" {
+	if len(got.VolumeMounts) != 1 || got.VolumeMounts[0].Path != "/volumes/vol" {
 		t.Errorf("VolumeMounts = %#v", got.VolumeMounts)
 	}
 	if got.Timestamp == "" {

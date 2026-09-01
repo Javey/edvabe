@@ -3,6 +3,7 @@ package control
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -131,7 +132,7 @@ func TestVolumesLifecycle(t *testing.T) {
 
 	// List empty
 	resp := apiGet(t, srv.URL+"/volumes")
-	var vols []volumeEntry
+	var vols []volumeResponse
 	json.NewDecoder(resp.Body).Decode(&vols)
 	resp.Body.Close()
 	if len(vols) != 0 {
@@ -144,7 +145,7 @@ func TestVolumesLifecycle(t *testing.T) {
 	if resp2.StatusCode != 201 {
 		t.Fatalf("create status = %d", resp2.StatusCode)
 	}
-	var created volumeEntry
+	var created volumeResponse
 	json.NewDecoder(resp2.Body).Decode(&created)
 	resp2.Body.Close()
 	if created.Name != "data-vol" {
@@ -323,6 +324,120 @@ func TestCreateSandboxWithExtraFieldsDoesNotCrash(t *testing.T) {
 	}
 }
 
+func TestCreateSandboxWithVolumeMounts(t *testing.T) {
+	srv := httptest.NewServer(newTestControlRouter(t))
+	defer srv.Close()
+
+	// Create a volume first.
+	volBody, _ := json.Marshal(map[string]string{"name": "test-vol"})
+	resp := apiPost(t, srv.URL+"/volumes", volBody)
+	if resp.StatusCode != 201 {
+		t.Fatalf("volume create status = %d", resp.StatusCode)
+	}
+	var vol volumeResponse
+	json.NewDecoder(resp.Body).Decode(&vol)
+	resp.Body.Close()
+	if vol.Name != "test-vol" {
+		t.Fatalf("volume name = %q, want test-vol", vol.Name)
+	}
+
+	// Create a sandbox with the volume mounted.
+	sbxBody, _ := json.Marshal(map[string]any{
+		"templateID": "base",
+		"timeout":    60,
+		"volumeMounts": []map[string]string{
+			{"name": "test-vol", "path": "/mnt/data"},
+		},
+	})
+	resp2 := apiPost(t, srv.URL+"/sandboxes", sbxBody)
+	if resp2.StatusCode != 201 {
+		t.Fatalf("sandbox create status = %d, body=%s", resp2.StatusCode, readBody(resp2))
+	}
+	var created sandboxResponse
+	json.NewDecoder(resp2.Body).Decode(&created)
+	resp2.Body.Close()
+
+	// GET the sandbox detail and verify volumeMounts is echoed.
+	resp3 := apiGet(t, srv.URL+"/sandboxes/"+created.SandboxID)
+	if resp3.StatusCode != 200 {
+		t.Fatalf("get status = %d", resp3.StatusCode)
+	}
+	var detail sandboxDetailResponse
+	json.NewDecoder(resp3.Body).Decode(&detail)
+	resp3.Body.Close()
+	if len(detail.VolumeMounts) != 1 {
+		t.Fatalf("expected 1 volume mount, got %d", len(detail.VolumeMounts))
+	}
+	if detail.VolumeMounts[0].Name != "test-vol" || detail.VolumeMounts[0].Path != "/mnt/data" {
+		t.Errorf("volumeMount = %+v, want {test-vol /mnt/data}", detail.VolumeMounts[0])
+	}
+}
+
+func TestCreateSandboxRejectsUnknownVolume(t *testing.T) {
+	srv := httptest.NewServer(newTestControlRouter(t))
+	defer srv.Close()
+
+	sbxBody, _ := json.Marshal(map[string]any{
+		"templateID": "base",
+		"timeout":    60,
+		"volumeMounts": []map[string]string{
+			{"name": "nonexistent", "path": "/mnt/data"},
+		},
+	})
+	resp := apiPost(t, srv.URL+"/sandboxes", sbxBody)
+	if resp.StatusCode != 400 {
+		t.Fatalf("expected 400 for unknown volume, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+}
+
+func TestCreateSandboxRejectsInvalidVolumeMounts(t *testing.T) {
+	srv := httptest.NewServer(newTestControlRouter(t))
+	defer srv.Close()
+
+	// Create a valid volume first.
+	volBody, _ := json.Marshal(map[string]string{"name": "valid-vol"})
+	resp := apiPost(t, srv.URL+"/volumes", volBody)
+	resp.Body.Close()
+
+	tests := []struct {
+		name string
+		body string
+	}{
+		{"empty name", `{"templateID":"base","volumeMounts":[{"name":"","path":"/mnt/data"}]}`},
+		{"relative path", `{"templateID":"base","volumeMounts":[{"name":"valid-vol","path":"relative/path"}]}`},
+		{"root path", `{"templateID":"base","volumeMounts":[{"name":"valid-vol","path":"/"}]}`},
+		{"duplicate path", `{"templateID":"base","volumeMounts":[{"name":"valid-vol","path":"/mnt/a"},{"name":"valid-vol","path":"/mnt/a"}]}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp := apiPost(t, srv.URL+"/sandboxes", []byte(tt.body))
+			if resp.StatusCode != 400 {
+				t.Errorf("expected 400 for %s, got %d", tt.name, resp.StatusCode)
+			}
+			resp.Body.Close()
+		})
+	}
+}
+
+func TestVolumeDuplicateName(t *testing.T) {
+	srv := httptest.NewServer(newTestControlRouter(t))
+	defer srv.Close()
+
+	body1, _ := json.Marshal(map[string]string{"name": "dupe-vol"})
+	resp1 := apiPost(t, srv.URL+"/volumes", body1)
+	if resp1.StatusCode != 201 {
+		t.Fatalf("first create status = %d", resp1.StatusCode)
+	}
+	resp1.Body.Close()
+
+	resp2 := apiPost(t, srv.URL+"/volumes", body1)
+	if resp2.StatusCode != 409 {
+		t.Fatalf("duplicate create status = %d, want 409", resp2.StatusCode)
+	}
+	resp2.Body.Close()
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────
 
 func apiGet(t *testing.T, url string) *http.Response {
@@ -352,4 +467,9 @@ func apiPost(t *testing.T, url string, body []byte) *http.Response {
 		t.Fatalf("POST %s: %v", url, err)
 	}
 	return resp
+}
+
+func readBody(resp *http.Response) string {
+	b, _ := io.ReadAll(resp.Body)
+	return string(b)
 }

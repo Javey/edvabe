@@ -61,12 +61,13 @@ func NewRouter(opts RouterOptions) http.Handler {
 	// lifetime — no persistence across restarts.
 	apiKeys := newAPIKeyStore()
 	accessTokens := newAccessTokenStore()
-	volumes := newVolumeStore()
+	volumes := newVolumeStore(opts.Runtime)
+	_ = volumes.loadFromRuntime(context.Background())
 
 	sandboxHandler := api.RequireAPIKey(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodPost && r.URL.Path == "/sandboxes":
-			createSandbox(opts.Manager, opts.Provider, w, r)
+			createSandbox(opts.Manager, opts.Provider, volumes, w, r)
 		case r.Method == http.MethodGet && r.URL.Path == "/v2/sandboxes":
 			listSandboxes(opts.Manager, opts.Provider, w, r)
 

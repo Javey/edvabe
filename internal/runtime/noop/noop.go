@@ -24,18 +24,26 @@ type entry struct {
 	memoryMB int
 	paused   bool
 	stopped  bool
+	mounts   []runtime.Mount
+}
+
+type volumeEntry struct {
+	info  runtime.VolumeInfo
+	inUse bool
 }
 
 type Runtime struct {
 	mu        sync.RWMutex
 	sandboxes map[string]*entry
 	images    map[string]bool
+	volumes   map[string]*volumeEntry
 }
 
 func New() *Runtime {
 	return &Runtime{
 		sandboxes: make(map[string]*entry),
 		images:    make(map[string]bool),
+		volumes:   make(map[string]*volumeEntry),
 	}
 }
 
@@ -81,6 +89,7 @@ func (r *Runtime) Create(ctx context.Context, req runtime.CreateRequest) (*runti
 		readyCmd: req.ReadyCmd,
 		cpuCount: req.CPUCount,
 		memoryMB: req.MemoryMB,
+		mounts:   copyMounts(req.Mounts),
 	}
 	return h, nil
 }
@@ -302,6 +311,86 @@ func copyStrMap(m map[string]string) map[string]string {
 		out[k] = v
 	}
 	return out
+}
+
+func copyMounts(mounts []runtime.Mount) []runtime.Mount {
+	if len(mounts) == 0 {
+		return nil
+	}
+	out := make([]runtime.Mount, len(mounts))
+	copy(out, mounts)
+	return out
+}
+
+// Mounts returns the mounts passed to Create for the named sandbox.
+func (r *Runtime) Mounts(sandboxID string) []runtime.Mount {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if e, ok := r.sandboxes[sandboxID]; ok {
+		return copyMounts(e.mounts)
+	}
+	return nil
+}
+
+func (r *Runtime) VolumeCreate(_ context.Context, volumeID, name string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, exists := r.volumes[volumeID]; exists {
+		return fmt.Errorf("noop: volume %q already exists", volumeID)
+	}
+	r.volumes[volumeID] = &volumeEntry{
+		info: runtime.VolumeInfo{
+			VolumeID:   volumeID,
+			Name:       name,
+			DockerName: "edvabe-vol-" + volumeID,
+			CreatedAt:  time.Now(),
+		},
+	}
+	return nil
+}
+
+func (r *Runtime) VolumeList(_ context.Context) ([]runtime.VolumeInfo, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make([]runtime.VolumeInfo, 0, len(r.volumes))
+	for _, v := range r.volumes {
+		out = append(out, v.info)
+	}
+	return out, nil
+}
+
+func (r *Runtime) VolumeInspect(_ context.Context, volumeID string) (*runtime.VolumeInfo, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	v, ok := r.volumes[volumeID]
+	if !ok {
+		return nil, fmt.Errorf("noop: volume %q not found", volumeID)
+	}
+	info := v.info
+	return &info, nil
+}
+
+func (r *Runtime) VolumeRemove(_ context.Context, volumeID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	v, ok := r.volumes[volumeID]
+	if !ok {
+		return fmt.Errorf("noop: volume %q not found", volumeID)
+	}
+	if v.inUse {
+		return fmt.Errorf("noop: volume %q is in use", volumeID)
+	}
+	delete(r.volumes, volumeID)
+	return nil
+}
+
+// VolumeSetInUse marks a volume as in-use (for testing conflict scenarios).
+func (r *Runtime) VolumeSetInUse(volumeID string, inUse bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if v, ok := r.volumes[volumeID]; ok {
+		v.inUse = inUse
+	}
 }
 
 var _ runtime.Runtime = (*Runtime)(nil)

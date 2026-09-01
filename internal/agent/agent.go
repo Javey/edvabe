@@ -71,10 +71,14 @@ type InitConfig struct {
 	HyperloopIP string
 }
 
-// VolumeMount describes a filesystem path inside the sandbox backed by
-// an external volume. Phase 1 passes an empty list; Phase 4 will wire
-// real volumes through the control plane.
+// VolumeMount describes an NFS-backed filesystem path inside the
+// sandbox, as expected by upstream envd's /init endpoint. edvabe
+// does NOT use this — local Docker volumes are mounted at container
+// creation time by the runtime, not by envd. This struct exists
+// solely for wire-parity with envd's init body and must never be
+// populated with local Docker volume names. See
+// docs/08-volume-mounts-plan.md § Envd boundary.
 type VolumeMount struct {
-	Name      string
-	MountPath string
+	NFSTarget string `json:"nfs_target,omitempty"`
+	Path      string `json:"path,omitempty"`
 }

@@ -8,9 +8,14 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"io"
 	"time"
 )
+
+// ErrVolumeInUse is returned by VolumeRemove when the volume is still
+// referenced by a running container.
+var ErrVolumeInUse = errors.New("volume is in use")
 
 // Runtime is the interface every sandbox backend implements.
 //
@@ -64,6 +69,20 @@ type Runtime interface {
 	// in transitional states (dead, removing, created-but-not-started)
 	// are filtered out.
 	ListManaged(ctx context.Context) ([]ManagedContainer, error)
+
+	// VolumeCreate creates a managed Docker named volume with edvabe
+	// labels. Returns the volume ID and Docker volume name.
+	VolumeCreate(ctx context.Context, volumeID, name string) error
+
+	// VolumeList returns all edvabe-managed volumes.
+	VolumeList(ctx context.Context) ([]VolumeInfo, error)
+
+	// VolumeInspect resolves a managed volume by its E2B volume ID.
+	VolumeInspect(ctx context.Context, volumeID string) (*VolumeInfo, error)
+
+	// VolumeRemove deletes a managed volume. Returns an error if the
+	// volume is in use by a running container.
+	VolumeRemove(ctx context.Context, volumeID string) error
 }
 
 // LabelMetaPrefix is the Docker-label prefix under which the runtime
@@ -103,6 +122,33 @@ type ManagedContainer struct {
 	AgentPort int
 }
 
+// Mount represents a single mount point in a sandbox container. It is
+// a typed, ordered replacement for the former BindMounts map — it can
+// express both Docker bind mounts (operator-controlled via
+// EDVABE_EXTRA_BINDS) and Docker named volumes (E2B volumeMounts).
+type Mount struct {
+	Type     MountType
+	Source   string // Docker volume name or host path
+	Target   string // container path
+	ReadOnly bool
+}
+
+type MountType string
+
+const (
+	MountTypeBind   MountType = "bind"
+	MountTypeVolume MountType = "volume"
+)
+
+// VolumeInfo is the runtime's view of a managed Docker volume.
+type VolumeInfo struct {
+	VolumeID   string // E2B-style vol_ ID
+	Name       string // user-supplied logical name
+	DockerName string // physical Docker volume name
+	CreatedAt  time.Time
+	Labels     map[string]string
+}
+
 // CreateRequest is the input to Runtime.Create.
 type CreateRequest struct {
 	SandboxID  string
@@ -112,7 +158,11 @@ type CreateRequest struct {
 	Timeout    time.Duration
 	AgentPort  int
 	AgentToken string
-	BindMounts map[string]string
+	// Mounts is the ordered list of mount points for this sandbox.
+	// Includes both E2B volume mounts (Docker named volumes) and
+	// operator-controlled bind mounts. The runtime appends its own
+	// extraBinds after these.
+	Mounts []Mount
 	// StartCmd is the user-defined command from the template's
 	// setStartCmd() that the edvabe-init wrapper runs alongside envd.
 	// The runtime injects it as EDVABE_START_CMD in the container's

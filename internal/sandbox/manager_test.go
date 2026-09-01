@@ -39,12 +39,12 @@ func (c *fakeClock) Advance(d time.Duration) {
 // times each callback fired so tests can assert the manager actually
 // handshook the agent.
 type stubAgent struct {
-	port        int
-	pings       int
-	inits       int
-	readyCalls  int
-	readyCmds   []string
-	readyErr    error
+	port       int
+	pings      int
+	inits      int
+	readyCalls int
+	readyCmds  []string
+	readyErr   error
 }
 
 func (s *stubAgent) Name() string    { return "stub" }
@@ -1585,4 +1585,84 @@ func TestCreateDestroysContainerWhenReadyProbeFails(t *testing.T) {
 		t.Errorf("manager still holds %d sandboxes after probe failure", len(m.List()))
 	}
 	_ = rt
+}
+
+func TestCreateWithVolumeMounts(t *testing.T) {
+	clk := newFakeClock(time.Date(2026, 4, 15, 12, 0, 0, 0, time.UTC))
+	rt := noop.New()
+	m, err := NewManager(Options{Runtime: rt, Agent: &stubAgent{port: 49983}, Clock: clk})
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+	ctx := context.Background()
+
+	created, err := m.Create(ctx, CreateOptions{
+		TemplateID: "base",
+		Timeout:    5 * time.Minute,
+		VolumeMounts: []VolumeMount{
+			{Name: "data", Path: "/mnt/data", DockerName: "edvabe-vol-vol_test123"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if len(created.VolumeMounts) != 1 {
+		t.Fatalf("expected 1 volume mount, got %d", len(created.VolumeMounts))
+	}
+	if created.VolumeMounts[0].Name != "data" || created.VolumeMounts[0].Path != "/mnt/data" {
+		t.Errorf("volumeMount = %+v", created.VolumeMounts[0])
+	}
+
+	mounts := rt.Mounts(created.ID)
+	if len(mounts) != 1 {
+		t.Fatalf("runtime received %d mounts, want 1", len(mounts))
+	}
+	if mounts[0].Source != "edvabe-vol-vol_test123" || mounts[0].Target != "/mnt/data" {
+		t.Errorf("runtime mount = %+v", mounts[0])
+	}
+}
+
+func TestRehydrateRestoresVolumeMounts(t *testing.T) {
+	clk := newFakeClock(time.Date(2026, 4, 15, 12, 0, 0, 0, time.UTC))
+	rt := noop.New()
+	m1, err := NewManager(Options{Runtime: rt, Agent: &stubAgent{port: 49983}, Clock: clk})
+	if err != nil {
+		t.Fatalf("NewManager #1: %v", err)
+	}
+	ctx := context.Background()
+
+	created, err := m1.Create(ctx, CreateOptions{
+		TemplateID: "base",
+		Timeout:    5 * time.Minute,
+		VolumeMounts: []VolumeMount{
+			{Name: "shared", Path: "/mnt/shared", DockerName: "edvabe-vol-vol_abc"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	// Fresh manager, same runtime.
+	m2, err := NewManager(Options{Runtime: rt, Agent: &stubAgent{port: 49983}, Clock: clk})
+	if err != nil {
+		t.Fatalf("NewManager #2: %v", err)
+	}
+	n, err := m2.Rehydrate(ctx, 10*time.Minute)
+	if err != nil {
+		t.Fatalf("Rehydrate: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("Rehydrate count = %d, want 1", n)
+	}
+
+	got, err := m2.Get(created.ID)
+	if err != nil {
+		t.Fatalf("Get after Rehydrate: %v", err)
+	}
+	if len(got.VolumeMounts) != 1 {
+		t.Fatalf("expected 1 volume mount after rehydrate, got %d", len(got.VolumeMounts))
+	}
+	if got.VolumeMounts[0].Name != "shared" || got.VolumeMounts[0].Path != "/mnt/shared" {
+		t.Errorf("rehydrated volumeMount = %+v", got.VolumeMounts[0])
+	}
 }

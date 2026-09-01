@@ -50,6 +50,18 @@ func (f *fakeRuntime) AgentEndpoint(string) (string, int, error) {
 func (f *fakeRuntime) ListManaged(context.Context) ([]runtime.ManagedContainer, error) {
 	return nil, nil
 }
+func (f *fakeRuntime) VolumeCreate(context.Context, string, string) error {
+	return nil
+}
+func (f *fakeRuntime) VolumeList(context.Context) ([]runtime.VolumeInfo, error) {
+	return nil, nil
+}
+func (f *fakeRuntime) VolumeInspect(context.Context, string) (*runtime.VolumeInfo, error) {
+	return nil, errors.New("not implemented")
+}
+func (f *fakeRuntime) VolumeRemove(context.Context, string) error {
+	return nil
+}
 
 func (f *fakeRuntime) BuildImage(ctx context.Context, req runtime.BuildRequest) error {
 	f.mu.Lock()

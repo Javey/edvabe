@@ -72,11 +72,11 @@ type Sandbox struct {
 	// PausedAt records when the sandbox was most recently paused. Used
 	// by the reaper to demote long-frozen containers to stopped and to
 	// GC long-stopped containers. Zero when State != StatePaused.
-	PausedAt time.Time
+	PausedAt  time.Time
 	OnTimeout OnTimeoutMode
-	Metadata     map[string]string
-	EnvVars      map[string]string
-	CreatedAt    time.Time
+	Metadata  map[string]string
+	EnvVars   map[string]string
+	CreatedAt time.Time
 	// Timeout is the idle-TTL set at creation time (or updated via
 	// SetTimeout). The sandbox is reaped when it has been idle
 	// (no data-plane traffic) for this duration.
@@ -91,6 +91,19 @@ type Sandbox struct {
 	// the template resolution and per-sandbox overrides.
 	CPUCount int
 	MemoryMB int
+	// VolumeMounts is the logical mount list resolved at create time.
+	// Each entry has the E2B volume name, the container path, and the
+	// physical Docker volume name to mount.
+	VolumeMounts []VolumeMount
+}
+
+// VolumeMount is the sandbox manager's view of a volume mount. The
+// logical Name and Path are what the SDK sees in API responses; the
+// DockerName is the physical Docker volume name used by the runtime.
+type VolumeMount struct {
+	Name       string
+	Path       string
+	DockerName string
 }
 
 // ExpiresAt is a computed property: LastActiveAt + Timeout. It is the
