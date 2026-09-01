@@ -131,6 +131,11 @@ type Mount struct {
 	Source   string // Docker volume name or host path
 	Target   string // container path
 	ReadOnly bool
+	// NoCopy prevents Docker from copying image files at the target
+	// path into a newly created named volume. Matches E2B's NFS mount
+	// semantics where the mount overwrites the target rather than
+	// inheriting image content. Only meaningful for MountTypeVolume.
+	NoCopy bool
 }
 
 type MountType string

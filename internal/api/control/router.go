@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -62,7 +63,9 @@ func NewRouter(opts RouterOptions) http.Handler {
 	apiKeys := newAPIKeyStore()
 	accessTokens := newAccessTokenStore()
 	volumes := newVolumeStore(opts.Runtime)
-	_ = volumes.loadFromRuntime(context.Background())
+	if err := volumes.loadFromRuntime(context.Background()); err != nil {
+		slog.Warn("volume registry recovery failed; serving with empty volume index", "err", err)
+	}
 
 	sandboxHandler := api.RequireAPIKey(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {

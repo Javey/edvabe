@@ -66,6 +66,15 @@ type sandboxResponse struct {
 	LastActiveAt       time.Time         `json:"lastActiveAt,omitempty"`
 }
 
+// listedSandboxResponse is the /v2/sandboxes list item shape. Upstream
+// ListedSandbox includes volumeMounts, but the create/connect/resume
+// response does not — so we use a distinct type rather than putting the
+// field on the shared sandboxResponse.
+type listedSandboxResponse struct {
+	sandboxResponse
+	VolumeMounts []volumeMountResponse `json:"volumeMounts"`
+}
+
 type sandboxDetailResponse struct {
 	sandboxResponse
 	State               sandbox.State         `json:"state"`
@@ -223,9 +232,12 @@ func listSandboxes(manager sandboxManager, provider versionProvider, w http.Resp
 		w.Header().Set("X-Next-Token", strconv.Itoa(offset+limit))
 	}
 
-	resp := make([]sandboxResponse, 0, len(page))
+	resp := make([]listedSandboxResponse, 0, len(page))
 	for _, sbx := range page {
-		resp = append(resp, toSandboxResponse(manager, provider, sbx))
+		resp = append(resp, listedSandboxResponse{
+			sandboxResponse: toSandboxResponse(manager, provider, sbx),
+			VolumeMounts:    toVolumeMountResponse(sbx.VolumeMounts),
+		})
 	}
 
 	w.Header().Set("Content-Type", "application/json")

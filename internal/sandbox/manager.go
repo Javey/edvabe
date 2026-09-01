@@ -349,6 +349,7 @@ func (m *Manager) Create(ctx context.Context, opts CreateOptions) (*Sandbox, err
 			Type:   runtime.MountTypeVolume,
 			Source: vm.DockerName,
 			Target: vm.Path,
+			NoCopy: true,
 		})
 	}
 

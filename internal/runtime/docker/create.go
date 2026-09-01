@@ -53,12 +53,16 @@ func (r *Runtime) Create(ctx context.Context, req runtime.CreateRequest) (*runti
 				ReadOnly: m.ReadOnly,
 			})
 		case runtime.MountTypeVolume:
-			mounts = append(mounts, mount.Mount{
+			dm := mount.Mount{
 				Type:     mount.TypeVolume,
 				Source:   m.Source,
 				Target:   m.Target,
 				ReadOnly: m.ReadOnly,
-			})
+			}
+			if m.NoCopy {
+				dm.VolumeOptions = &mount.VolumeOptions{NoCopy: true}
+			}
+			mounts = append(mounts, dm)
 		}
 	}
 	mounts = append(mounts, r.extraBinds...)

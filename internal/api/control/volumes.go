@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -12,22 +13,10 @@ import (
 	"github.com/contember/edvabe/internal/runtime"
 )
 
-// volumeNameValidator checks name constraints per the E2B OpenAPI spec.
-// Names must be non-empty and match a DNS_LABEL-compatible character set
-// (alphanumeric + hyphens, no leading/trailing hyphen).
+var volumeNameRe = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+
 func validateVolumeName(name string) bool {
-	if name == "" || len(name) > 63 {
-		return false
-	}
-	if name[0] == '-' || name[len(name)-1] == '-' {
-		return false
-	}
-	for _, c := range name {
-		if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') {
-			return false
-		}
-	}
-	return true
+	return volumeNameRe.MatchString(name)
 }
 
 // volumeStore is a runtime-backed volume registry. It tracks the E2B
@@ -135,9 +124,10 @@ func (s *volumeStore) create(w http.ResponseWriter, r *http.Request) {
 	s.byName[req.Name] = s.byID[volumeID]
 	s.mu.Unlock()
 
-	writeJSON(w, http.StatusCreated, volumeResponse{
+	writeJSON(w, http.StatusCreated, volumeDetailResponse{
 		VolumeID: volumeID,
 		Name:     req.Name,
+		Token:    "edvabe-volume-token",
 	})
 }
 

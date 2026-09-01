@@ -11,6 +11,7 @@ coverage.html
 # Editor
 .idea/
 .vscode/
+.opencode/
 *.swp
 
 # OS

@@ -6,8 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/moby/moby/api/types/container"
-	"github.com/moby/moby/api/types/mount"
 	"github.com/moby/moby/api/types/volume"
 	"github.com/moby/moby/client"
 
@@ -39,67 +37,11 @@ func (r *Runtime) VolumeCreate(ctx context.Context, volumeID, name string) error
 		LabelVolumeID:      volumeID,
 		LabelVolumeName:    name,
 	}
-	result, err := r.cli.VolumeCreate(ctx, client.VolumeCreateOptions{
+	if _, err := r.cli.VolumeCreate(ctx, client.VolumeCreateOptions{
 		Name:   dockerName,
 		Labels: labels,
-	})
-	if err != nil {
+	}); err != nil {
 		return fmt.Errorf("docker runtime: volume create %q: %w", volumeID, err)
-	}
-
-	if err := r.initVolumePermissions(ctx, result.Volume.Mountpoint); err != nil {
-		_, _ = r.cli.VolumeRemove(ctx, dockerName, client.VolumeRemoveOptions{Force: true})
-		return fmt.Errorf("docker runtime: volume init permissions %q: %w", volumeID, err)
-	}
-	return nil
-}
-
-// initVolumePermissions chowns the volume root to the default sandbox
-// user (UID 1001:GID 1001) so the user account can write to it. A new
-// Docker named volume starts as root:root 0755. We run a short-lived
-// helper container with the volume mounted to chown it.
-func (r *Runtime) initVolumePermissions(ctx context.Context, mountpoint string) error {
-	helperName := "edvabe-vol-init-" + fmt.Sprintf("%d", time.Now().UnixNano())
-	defer func() {
-		_, _ = r.cli.ContainerRemove(ctx, helperName, client.ContainerRemoveOptions{Force: true})
-	}()
-
-	cmd := []string{"chown", "-R", "1001:1001", "/vol"}
-	cfg := container.Config{
-		Image: "busybox:latest",
-		Cmd:   cmd,
-	}
-	hostCfg := container.HostConfig{
-		Mounts: []mount.Mount{{
-			Type:   mount.TypeBind,
-			Source: mountpoint,
-			Target: "/vol",
-		}},
-		AutoRemove: true,
-	}
-	created, err := r.cli.ContainerCreate(ctx, client.ContainerCreateOptions{
-		Config:     &cfg,
-		HostConfig: &hostCfg,
-		Name:       helperName,
-	})
-	if err != nil {
-		return fmt.Errorf("create helper container: %w", err)
-	}
-	if _, err := r.cli.ContainerStart(ctx, created.ID, client.ContainerStartOptions{}); err != nil {
-		return fmt.Errorf("start helper container: %w", err)
-	}
-	waitResult := r.cli.ContainerWait(ctx, created.ID, client.ContainerWaitOptions{Condition: container.WaitConditionNotRunning})
-	select {
-	case res := <-waitResult.Result:
-		if res.StatusCode != 0 {
-			return fmt.Errorf("helper container exited with status %d", res.StatusCode)
-		}
-	case err := <-waitResult.Error:
-		if err != nil {
-			return fmt.Errorf("wait helper container: %w", err)
-		}
-	case <-ctx.Done():
-		return ctx.Err()
 	}
 	return nil
 }
