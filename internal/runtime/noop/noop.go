@@ -221,6 +221,10 @@ func (r *Runtime) Stats(ctx context.Context, sandboxID string) (*runtime.Stats, 
 	return &runtime.Stats{}, nil
 }
 
+func (r *Runtime) StatsOneShot(ctx context.Context, sandboxID string) (*runtime.Stats, error) {
+	return r.Stats(ctx, sandboxID)
+}
+
 func (r *Runtime) BuildImage(ctx context.Context, req runtime.BuildRequest) error {
 	if req.Tag == "" {
 		return fmt.Errorf("noop: BuildRequest.Tag is required")

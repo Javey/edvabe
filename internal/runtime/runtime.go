@@ -54,6 +54,10 @@ type Runtime interface {
 	// Stats reports resource usage for metrics endpoints.
 	Stats(ctx context.Context, sandboxID string) (*Stats, error)
 
+	// StatsOneShot reports an immediate resource sample. CPU percentage is
+	// unavailable because Docker does not collect a previous sample.
+	StatsOneShot(ctx context.Context, sandboxID string) (*Stats, error)
+
 	// BuildImage builds a template image from a build context (Phase 4
 	// for user templates; used in Phase 1 by the upstream agent provider
 	// to bake the base image).

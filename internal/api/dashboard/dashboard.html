@@ -97,6 +97,8 @@ tr:hover td{background:rgba(136,198,255,.04)}
 
 <script>
 const REFRESH_MS = 3000;
+let refreshTimer;
+let refreshInFlight = false;
 
 function formatAge(isoStr) {
   const d = new Date(isoStr);
@@ -243,6 +245,9 @@ function renderTemplates(templates) {
 }
 
 async function fetchOverview() {
+  if (refreshInFlight) return;
+  refreshInFlight = true;
+  clearTimeout(refreshTimer);
   try {
     const resp = await fetch('/dashboard/api/overview');
     if (!resp.ok) throw new Error(resp.statusText);
@@ -254,6 +259,9 @@ async function fetchOverview() {
       'updated ' + new Date().toLocaleTimeString();
   } catch (e) {
     document.getElementById('refresh-indicator').textContent = 'fetch failed';
+  } finally {
+    refreshInFlight = false;
+    refreshTimer = setTimeout(fetchOverview, REFRESH_MS);
   }
 }
 
@@ -285,7 +293,6 @@ document.addEventListener('click', (e) => {
 });
 
 fetchOverview();
-setInterval(fetchOverview, REFRESH_MS);
 </script>
 </body>
 </html>

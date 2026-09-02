@@ -30,10 +30,10 @@ type sandboxManager interface {
 }
 
 // statsProvider is the slice of runtime.Runtime the dashboard needs for
-// per-sandbox memory / CPU reporting. Keeping the interface narrow so
+// per-sandbox memory reporting. Keeping the interface narrow so
 // tests can plug in a fake without dragging in the whole runtime.
 type statsProvider interface {
-	Stats(ctx context.Context, sandboxID string) (*runtime.Stats, error)
+	StatsOneShot(ctx context.Context, sandboxID string) (*runtime.Stats, error)
 }
 
 type templateStore interface {
@@ -153,7 +153,7 @@ func serveOverview(opts HandlerOptions, w http.ResponseWriter, r *http.Request) 
 		// Stats only make sense for live containers — stopped
 		// sandboxes have no cgroup to read.
 		if opts.Runtime != nil && !(s.State == sandbox.StatePaused && s.PauseMode == sandbox.PauseStopped) {
-			if stats, err := opts.Runtime.Stats(r.Context(), s.ID); err == nil && stats != nil {
+			if stats, err := opts.Runtime.StatsOneShot(r.Context(), s.ID); err == nil && stats != nil {
 				entry.CPUUsedPercent = stats.CPUUsedPercent
 				entry.MemoryUsedMiB = stats.MemoryUsedMB
 				entry.MemoryLimitMiB = stats.MemoryLimitMB

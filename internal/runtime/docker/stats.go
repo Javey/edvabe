@@ -36,12 +36,22 @@ type cpuStats struct {
 // the delta without the caller having to stream and diff samples
 // themselves.
 func (r *Runtime) Stats(ctx context.Context, sandboxID string) (*runtime.Stats, error) {
+	return r.stats(ctx, sandboxID, true)
+}
+
+// StatsOneShot returns memory usage immediately without waiting for Docker's
+// second CPU sample. It is intended for latency-sensitive status views.
+func (r *Runtime) StatsOneShot(ctx context.Context, sandboxID string) (*runtime.Stats, error) {
+	return r.stats(ctx, sandboxID, false)
+}
+
+func (r *Runtime) stats(ctx context.Context, sandboxID string, includePreviousSample bool) (*runtime.Stats, error) {
 	if sandboxID == "" {
 		return nil, fmt.Errorf("docker runtime: Stats: sandboxID is required")
 	}
 	resp, err := r.cli.ContainerStats(ctx, sandboxID, client.ContainerStatsOptions{
 		Stream:                false,
-		IncludePreviousSample: true,
+		IncludePreviousSample: includePreviousSample,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("docker runtime: stats %q: %w", sandboxID, err)

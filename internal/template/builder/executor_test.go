@@ -44,6 +44,9 @@ func (f *fakeRuntime) Commit(context.Context, string, string) error {
 func (f *fakeRuntime) Stats(context.Context, string) (*runtime.Stats, error) {
 	return &runtime.Stats{}, nil
 }
+func (f *fakeRuntime) StatsOneShot(context.Context, string) (*runtime.Stats, error) {
+	return &runtime.Stats{}, nil
+}
 func (f *fakeRuntime) AgentEndpoint(string) (string, int, error) {
 	return "", 0, errors.New("not implemented")
 }
