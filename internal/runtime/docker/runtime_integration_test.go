@@ -15,6 +15,7 @@ package docker
 import (
 	"context"
 	"net"
+	"slices"
 	"strconv"
 	"testing"
 	"time"
@@ -223,6 +224,31 @@ func TestDockerRuntimeCreateSkipsZeroResourceLimits(t *testing.T) {
 	}
 	if inspect.Container.HostConfig.Memory != 0 {
 		t.Errorf("Memory = %d, want 0 (unlimited)", inspect.Container.HostConfig.Memory)
+	}
+}
+
+func TestDockerRuntimeCreateAppliesCapAdd(t *testing.T) {
+	r := newTestRuntime(t)
+	ctx := context.Background()
+
+	sid := uniqueSandboxID(t)
+	t.Cleanup(func() { _ = r.Destroy(ctx, sid) })
+
+	if _, err := r.Create(ctx, runtime.CreateRequest{
+		SandboxID: sid,
+		Image:     testImage,
+		CapAdd:    []string{"NET_ADMIN"},
+	}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	inspect, err := r.cli.ContainerInspect(ctx, sid, client.ContainerInspectOptions{})
+	if err != nil {
+		t.Fatalf("ContainerInspect: %v", err)
+	}
+	if !slices.Contains(inspect.Container.HostConfig.CapAdd, "NET_ADMIN") &&
+		!slices.Contains(inspect.Container.HostConfig.CapAdd, "CAP_NET_ADMIN") {
+		t.Errorf("CapAdd = %v, want NET_ADMIN", inspect.Container.HostConfig.CapAdd)
 	}
 }
 

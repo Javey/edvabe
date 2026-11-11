@@ -3,6 +3,7 @@ package docker
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/moby/moby/api/types/container"
@@ -81,6 +82,7 @@ func (r *Runtime) Create(ctx context.Context, req runtime.CreateRequest) (*runti
 	hostCfg := &container.HostConfig{
 		Mounts:      mounts,
 		SecurityOpt: []string{"seccomp=unconfined", "apparmor=unconfined"},
+		CapAdd:      normalizeCapAdd(req.CapAdd),
 	}
 	if len(r.securityOpt) > 0 {
 		hostCfg.SecurityOpt = r.securityOpt
@@ -142,6 +144,29 @@ func (r *Runtime) Create(ctx context.Context, req runtime.CreateRequest) (*runti
 		AgentPort:   port,
 		CreatedAt:   time.Now(),
 	}, nil
+}
+
+func normalizeCapAdd(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		capability := strings.TrimSpace(value)
+		if capability == "" {
+			continue
+		}
+		if _, exists := seen[capability]; exists {
+			continue
+		}
+		seen[capability] = struct{}{}
+		out = append(out, capability)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func envMapToSlice(env map[string]string) []string {

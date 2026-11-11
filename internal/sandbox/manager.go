@@ -89,6 +89,8 @@ type TemplateResolution struct {
 	CPUCount int
 	// MemoryMB caps the sandbox's RSS. Zero means unlimited.
 	MemoryMB int
+	// CapAdd is the list of Linux capabilities to add to the sandbox.
+	CapAdd []string
 }
 
 // ErrTemplateNotFound signals the resolver has no record of the given
@@ -366,6 +368,7 @@ func (m *Manager) Create(ctx context.Context, opts CreateOptions) (*Sandbox, err
 		ReadyCmd:   resolution.ReadyCmd,
 		CPUCount:   cpuCount,
 		MemoryMB:   memoryMB,
+		CapAdd:     append([]string(nil), resolution.CapAdd...),
 		Labels:     labels,
 	})
 	if err != nil {

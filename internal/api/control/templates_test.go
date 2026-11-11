@@ -208,6 +208,7 @@ func TestPatchTemplate(t *testing.T) {
 	rec := doJSON(t, h, http.MethodPatch, "/v2/templates/"+created.TemplateID, templateUpdateRequest{
 		Public: &trueVal,
 		Tags:   []string{"v1", "stable"},
+		CapAdd: []string{"NET_ADMIN"},
 	})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
@@ -216,6 +217,9 @@ func TestPatchTemplate(t *testing.T) {
 	_ = json.NewDecoder(rec.Body).Decode(&updated)
 	if !updated.Public || len(updated.Tags) != 2 {
 		t.Fatalf("update did not take: %+v", updated)
+	}
+	if len(updated.CapAdd) != 1 || updated.CapAdd[0] != "NET_ADMIN" {
+		t.Fatalf("capAdd did not take: %+v", updated.CapAdd)
 	}
 }
 

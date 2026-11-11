@@ -62,6 +62,7 @@ type Template struct {
 	StartCmd  string    `json:"startCmd,omitempty"`
 	ReadyCmd  string    `json:"readyCmd,omitempty"`
 	ImageTag  string    `json:"imageTag,omitempty"`
+	CapAdd    []string  `json:"capAdd,omitempty"`
 	Public    bool      `json:"public"`
 	CreatedAt time.Time `json:"createdAt"`
 	Builds    []Build   `json:"builds,omitempty"`
@@ -81,13 +82,13 @@ type Step struct {
 // image selection, the step array, and the start/ready commands that
 // apply at sandbox create time.
 type BuildSpec struct {
-	FromImage         string          `json:"fromImage,omitempty"`
-	FromTemplate      string          `json:"fromTemplate,omitempty"`
-	FromImageRegistry *RegistryAuth   `json:"fromImageRegistry,omitempty"`
-	Steps             []Step          `json:"steps,omitempty"`
-	StartCmd          string          `json:"startCmd,omitempty"`
-	ReadyCmd          string          `json:"readyCmd,omitempty"`
-	Force             bool            `json:"force,omitempty"`
+	FromImage         string        `json:"fromImage,omitempty"`
+	FromTemplate      string        `json:"fromTemplate,omitempty"`
+	FromImageRegistry *RegistryAuth `json:"fromImageRegistry,omitempty"`
+	Steps             []Step        `json:"steps,omitempty"`
+	StartCmd          string        `json:"startCmd,omitempty"`
+	ReadyCmd          string        `json:"readyCmd,omitempty"`
+	Force             bool          `json:"force,omitempty"`
 }
 
 // RegistryAuth carries private-registry credentials from the SDK to the

@@ -1327,6 +1327,7 @@ func TestCreateForwardsTemplateResources(t *testing.T) {
 				ImageTag: "edvabe/heavy:latest",
 				CPUCount: 4,
 				MemoryMB: 2048,
+				CapAdd:   []string{"NET_ADMIN"},
 			},
 		},
 	}
@@ -1344,6 +1345,9 @@ func TestCreateForwardsTemplateResources(t *testing.T) {
 	}
 	if sbx.CPUCount != 4 || sbx.MemoryMB != 2048 {
 		t.Errorf("sandbox record cpu=%d mem=%d, want 4/2048", sbx.CPUCount, sbx.MemoryMB)
+	}
+	if got := rt.CapAdd(sbx.ID); len(got) != 1 || got[0] != "NET_ADMIN" {
+		t.Errorf("runtime CapAdd = %v, want [NET_ADMIN]", got)
 	}
 }
 

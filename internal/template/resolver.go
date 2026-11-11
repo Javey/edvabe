@@ -53,5 +53,6 @@ func (r *sandboxResolver) Resolve(idOrAlias string) (sandbox.TemplateResolution,
 		ReadyCmd: tpl.ReadyCmd,
 		CPUCount: tpl.CPUCount,
 		MemoryMB: tpl.MemoryMB,
+		CapAdd:   append([]string(nil), tpl.CapAdd...),
 	}, nil
 }

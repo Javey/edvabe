@@ -188,6 +188,9 @@ type CreateRequest struct {
 	CPUCount int
 	// MemoryMB caps the sandbox's RSS. Zero means unlimited.
 	MemoryMB int
+	// CapAdd is the list of Linux capabilities to add to the container.
+	// Values are passed through to Docker's HostConfig.CapAdd.
+	CapAdd []string
 	// Labels is an arbitrary map of Docker-labels the caller wants
 	// stamped on the container. Sandbox manager uses it to persist
 	// sandbox-level metadata (template id, tokens, on-timeout) so

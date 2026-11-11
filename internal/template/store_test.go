@@ -278,6 +278,34 @@ func TestSeedBuiltInCreatesNew(t *testing.T) {
 	}
 }
 
+func TestStorePersistsCapAdd(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "templates.json")
+	s, err := NewStore(Options{Path: path})
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	_, err = s.Create(CreateOptions{
+		Name:   "dotty-coding",
+		CapAdd: []string{"NET_ADMIN"},
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	reloaded, err := NewStore(Options{Path: path})
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	tpl, err := reloaded.ResolveAlias("dotty-coding")
+	if err != nil {
+		t.Fatalf("ResolveAlias: %v", err)
+	}
+	if len(tpl.CapAdd) != 1 || tpl.CapAdd[0] != "NET_ADMIN" {
+		t.Fatalf("CapAdd = %v, want [NET_ADMIN]", tpl.CapAdd)
+	}
+}
+
 func TestSeedBuiltInUpdatesExisting(t *testing.T) {
 	s, _ := newStore(t)
 	_ = s.SeedBuiltIn(SeedOptions{

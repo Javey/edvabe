@@ -32,6 +32,25 @@ func TestParseSecurityOpt(t *testing.T) {
 	}
 }
 
+func TestNormalizeCapAdd(t *testing.T) {
+	cases := []struct {
+		name string
+		in   []string
+		want []string
+	}{
+		{"empty", nil, nil},
+		{"trims and dedupes", []string{" NET_ADMIN ", "NET_ADMIN", "", "SYS_PTRACE"}, []string{"NET_ADMIN", "SYS_PTRACE"}},
+		{"all blank", []string{"", "  "}, nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := normalizeCapAdd(tc.in); !slices.Equal(got, tc.want) {
+				t.Errorf("normalizeCapAdd(%#v) = %#v, want %#v", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestDiscoverHostHonorsDockerHostEnv(t *testing.T) {
 	t.Setenv("DOCKER_HOST", "tcp://example.invalid:2375")
 	host, err := DiscoverHost()

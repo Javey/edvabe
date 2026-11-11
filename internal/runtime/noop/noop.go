@@ -22,6 +22,7 @@ type entry struct {
 	readyCmd string
 	cpuCount int
 	memoryMB int
+	capAdd   []string
 	paused   bool
 	stopped  bool
 	mounts   []runtime.Mount
@@ -89,6 +90,7 @@ func (r *Runtime) Create(ctx context.Context, req runtime.CreateRequest) (*runti
 		readyCmd: req.ReadyCmd,
 		cpuCount: req.CPUCount,
 		memoryMB: req.MemoryMB,
+		capAdd:   append([]string(nil), req.CapAdd...),
 		mounts:   copyMounts(req.Mounts),
 	}
 	return h, nil
@@ -113,6 +115,15 @@ func (r *Runtime) MemoryMB(sandboxID string) int {
 		return e.memoryMB
 	}
 	return 0
+}
+
+func (r *Runtime) CapAdd(sandboxID string) []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if e, ok := r.sandboxes[sandboxID]; ok {
+		return append([]string(nil), e.capAdd...)
+	}
+	return nil
 }
 
 // Image returns the image tag the named sandbox was launched with,

@@ -31,6 +31,7 @@ type templateBuildRequest struct {
 	Tags      []string `json:"tags"`
 	CPUCount  int      `json:"cpuCount"`
 	MemoryMB  int      `json:"memoryMB"`
+	CapAdd    []string `json:"capAdd,omitempty"`
 	SkipCache bool     `json:"skipCache"`
 }
 
@@ -55,6 +56,7 @@ type templateListItem struct {
 	Tags       []string  `json:"tags"`
 	CPUCount   int       `json:"cpuCount,omitempty"`
 	MemoryMB   int       `json:"memoryMB,omitempty"`
+	CapAdd     []string  `json:"capAdd,omitempty"`
 	Public     bool      `json:"public"`
 	CreatedAt  time.Time `json:"createdAt"`
 	UpdatedAt  time.Time `json:"updatedAt"`
@@ -81,6 +83,7 @@ type templateAliasResponse struct {
 type templateUpdateRequest struct {
 	Public *bool    `json:"public"`
 	Tags   []string `json:"tags"`
+	CapAdd []string `json:"capAdd,omitempty"`
 }
 
 // createTemplate handles POST /v3/templates. The request creates a
@@ -104,6 +107,7 @@ func createTemplate(store templateStore, w http.ResponseWriter, r *http.Request)
 		Tags:     req.Tags,
 		CPUCount: req.CPUCount,
 		MemoryMB: req.MemoryMB,
+		CapAdd:   req.CapAdd,
 	})
 	if err != nil {
 		if errors.Is(err, template.ErrAliasTaken) {
@@ -242,6 +246,9 @@ func patchTemplate(store templateStore, w http.ResponseWriter, r *http.Request) 
 		if req.Tags != nil {
 			t.Tags = append([]string(nil), req.Tags...)
 		}
+		if req.CapAdd != nil {
+			t.CapAdd = append([]string(nil), req.CapAdd...)
+		}
 	})
 	if err != nil {
 		api.WriteError(w, http.StatusInternalServerError, err.Error())
@@ -317,6 +324,7 @@ func toTemplateListItem(tpl *template.Template) templateListItem {
 		Tags:       nonNilStrings(tpl.Tags),
 		CPUCount:   tpl.CPUCount,
 		MemoryMB:   tpl.MemoryMB,
+		CapAdd:     nonNilStrings(tpl.CapAdd),
 		Public:     tpl.Public,
 		CreatedAt:  tpl.CreatedAt,
 		UpdatedAt:  updatedAt,

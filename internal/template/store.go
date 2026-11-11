@@ -155,6 +155,7 @@ type SeedOptions struct {
 	ImageTag string
 	StartCmd string
 	ReadyCmd string
+	CapAdd   []string
 }
 
 // SeedBuiltIn creates or updates a built-in template. See SeedOptions.
@@ -167,6 +168,7 @@ func (s *Store) SeedBuiltIn(opts SeedOptions) error {
 		t.ImageTag = opts.ImageTag
 		t.StartCmd = opts.StartCmd
 		t.ReadyCmd = opts.ReadyCmd
+		t.CapAdd = append([]string(nil), opts.CapAdd...)
 		return s.flush()
 	}
 
@@ -177,6 +179,7 @@ func (s *Store) SeedBuiltIn(opts SeedOptions) error {
 		ImageTag:  opts.ImageTag,
 		StartCmd:  opts.StartCmd,
 		ReadyCmd:  opts.ReadyCmd,
+		CapAdd:    append([]string(nil), opts.CapAdd...),
 		CreatedAt: s.clock.Now(),
 		Builds: []Build{{
 			ID:        NewBuildID(),
@@ -198,6 +201,7 @@ type CreateOptions struct {
 	Tags     []string
 	CPUCount int
 	MemoryMB int
+	CapAdd   []string
 }
 
 // Create inserts a new template and flushes. Returns ErrAliasTaken if
@@ -223,6 +227,7 @@ func (s *Store) Create(opts CreateOptions) (*Template, error) {
 		Alias:     alias,
 		CPUCount:  opts.CPUCount,
 		MemoryMB:  opts.MemoryMB,
+		CapAdd:    append([]string(nil), opts.CapAdd...),
 		CreatedAt: s.clock.Now(),
 	}
 	s.templates[t.ID] = t
@@ -407,6 +412,9 @@ func (t *Template) clone() *Template {
 	cp := *t
 	if t.Tags != nil {
 		cp.Tags = append([]string(nil), t.Tags...)
+	}
+	if t.CapAdd != nil {
+		cp.CapAdd = append([]string(nil), t.CapAdd...)
 	}
 	if t.Builds != nil {
 		cp.Builds = append([]Build(nil), t.Builds...)
